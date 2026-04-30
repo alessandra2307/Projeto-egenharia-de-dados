@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MotoAR — EDA + LCA + Cruzamentos</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root {
+  --bg: #F7F6F2; --bg2: #EFEDE8; --bg3: #E5E2DB;
+  --ink: #1A1915; --ink2: #4A4840; --ink3: #8A8880;
+  --accent: #C8401A; --accent2: #E05A2B;
+  --green: #1A6B3C; --yellow: #B8860B; --blue: #1A4A7A;
+  --border: rgba(26,25,21,0.12); --border2: rgba(26,25,21,0.22);
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'IBM Plex Sans', sans-serif;
+  --r: 3px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 14px; line-height: 1.6; }
+
+/* NAV */
+.top-nav { background: var(--ink); color: #fff; padding: 0 2rem; display: flex; align-items: center; gap: 0; position: sticky; top: 0; z-index: 100; border-bottom: 2px solid var(--accent); }
+.nav-brand { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--accent2); padding: 14px 0; margin-right: 2rem; white-space: nowrap; }
+.nav-links { display: flex; overflow-x: auto; gap: 0; }
+.nav-link { color: rgba(255,255,255,0.55); font-size: 11px; font-weight: 500; letter-spacing: 0.07em; text-transform: uppercase; padding: 16px 16px; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; transition: all 0.2s; text-decoration: none; display: block; }
+.nav-link:hover, .nav-link.active { color: #fff; border-bottom-color: var(--accent2); }
+
+/* LAYOUT */
+.page { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+/* SECTION */
+.section { margin-bottom: 4rem; }
+.section-tag { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); border-left: 3px solid var(--accent); padding-left: 10px; margin-bottom: 10px; }
+.section-title { font-family: var(--mono); font-size: 26px; font-weight: 600; color: var(--ink); margin-bottom: 6px; letter-spacing: -0.5px; }
+.section-sub { font-size: 14px; color: var(--ink2); margin-bottom: 2rem; max-width: 680px; line-height: 1.7; }
+hr.div { border: none; border-top: 1px solid var(--border); margin: 3rem 0; }
+
+/* STAT GRID */
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border2); margin-bottom: 2rem; }
+.stat-cell { background: var(--bg); padding: 1.25rem 1.5rem; }
+.stat-label { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3); margin-bottom: 6px; }
+.stat-val { font-family: var(--mono); font-size: 28px; font-weight: 600; color: var(--ink); line-height: 1; margin-bottom: 4px; }
+.stat-val.red { color: var(--accent); }
+.stat-val.green { color: var(--green); }
+.stat-val.blue { color: var(--blue); }
+.stat-sub { font-size: 11px; color: var(--ink3); }
+
+/* CHART BOXES */
+.chart-row { display: grid; gap: 1px; background: var(--border); border: 1px solid var(--border2); margin-bottom: 2rem; }
+.chart-row.two { grid-template-columns: 1fr 1fr; }
+.chart-row.three { grid-template-columns: 1fr 1fr 1fr; }
+.chart-row.full { grid-template-columns: 1fr; }
+.chart-box { background: var(--bg); padding: 1.5rem; }
+.chart-title { font-family: var(--mono); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink2); margin-bottom: 4px; }
+.chart-sub { font-size: 11px; color: var(--ink3); margin-bottom: 1.25rem; }
+.canvas-wrap { position: relative; width: 100%; }
+.h200 { height: 200px; }
+.h260 { height: 260px; }
+.h320 { height: 320px; }
+.h180 { height: 180px; }
+
+/* HEATMAP */
+.heatmap { display: grid; grid-template-columns: 80px repeat(12, 1fr); gap: 2px; font-family: var(--mono); font-size: 10px; }
+.hm-label { display: flex; align-items: center; color: var(--ink3); font-size: 10px; }
+.hm-cell { height: 28px; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 600; transition: transform 0.15s; cursor: default; }
+.hm-cell:hover { transform: scale(1.15); z-index: 10; position: relative; }
+.hm-month { display: flex; align-items: center; justify-content: center; color: var(--ink3); font-size: 9px; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* CORR MATRIX */
+.corr-grid { display: grid; grid-template-columns: 80px repeat(4, 1fr); gap: 2px; font-family: var(--mono); }
+.corr-label { font-size: 10px; color: var(--ink2); display: flex; align-items: center; font-weight: 500; }
+.corr-cell { height: 44px; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+.corr-header { font-size: 9px; color: var(--ink3); text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; justify-content: center; height: 32px; }
+
+/* INSIGHT BOXES */
+.insights { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border2); margin-bottom: 2rem; }
+.insight { background: var(--bg); padding: 1.25rem 1.5rem; }
+.insight-icon { font-size: 24px; margin-bottom: 10px; }
+.insight-title { font-family: var(--mono); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink); margin-bottom: 6px; }
+.insight-text { font-size: 12px; color: var(--ink2); line-height: 1.6; }
+.insight-num { font-family: var(--mono); font-size: 22px; font-weight: 600; color: var(--accent); display: block; margin-top: 6px; }
+
+/* LCA PIPELINE */
+.pipeline { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; border: 1px solid var(--border2); margin-bottom: 2rem; }
+.pipe-step { padding: 1.5rem 1.25rem; border-right: 1px solid var(--border); position: relative; background: var(--bg); }
+.pipe-step:last-child { border-right: none; }
+.pipe-num { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+.pipe-name { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 8px; line-height: 1.3; }
+.pipe-items { list-style: none; }
+.pipe-items li { font-size: 11px; color: var(--ink2); padding: 3px 0; border-bottom: 1px solid var(--border); line-height: 1.4; }
+.pipe-items li:last-child { border-bottom: none; }
+.pipe-items li::before { content: '→ '; color: var(--ink3); }
+.pipe-arrow { position: absolute; right: -10px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; background: var(--ink); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; z-index: 2; }
+
+/* TABLE */
+.data-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; border: 1px solid var(--border2); }
+.data-table th { background: var(--ink); color: #fff; padding: 10px 14px; text-align: left; font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; }
+.data-table td { padding: 9px 14px; border-bottom: 1px solid var(--border); color: var(--ink2); }
+.data-table tr:nth-child(even) td { background: var(--bg2); }
+.data-table tr:last-child td { border-bottom: none; }
+.td-num { color: var(--ink); font-weight: 500; }
+.td-badge { display: inline-block; padding: 2px 8px; border-radius: 2px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+.bd-red { background: #FDE8E3; color: var(--accent); }
+.bd-green { background: #E3F3EA; color: var(--green); }
+.bd-yellow { background: #FBF3DC; color: var(--yellow); }
+.bd-blue { background: #E3EDF8; color: var(--blue); }
+
+/* SCATTER SVG */
+.scatter-canvas { width: 100%; height: 280px; }
+
+/* SEASON BAND */
+.season-bar { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border2); margin-bottom: 2rem; }
+.sband { padding: 1.25rem 1.5rem; background: var(--bg); }
+.sband-label { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+.sband-val { font-family: var(--mono); font-size: 32px; font-weight: 600; line-height: 1; margin-bottom: 4px; }
+.sband-sub { font-size: 11px; color: var(--ink3); }
+
+/* FOOTER TAG */
+.ftag { font-family: var(--mono); font-size: 10px; color: var(--ink3); margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="nav-brand">MOTOAR // EDA·LCA·CROSS</div>
+  <div class="nav-links">
+    <a class="nav-link active" href="#lca">LCA do Projeto</a>
+    <a class="nav-link" href="#eda-inmet">EDA — INMET</a>
+    <a class="nav-link" href="#eda-iqair">EDA — IQAir</a>
+    <a class="nav-link" href="#cross">Cruzamentos</a>
+    <a class="nav-link" href="#model">Features do Modelo</a>
+  </div>
+</nav>
+
+<div class="page">
+
+<!-- =================== LCA =================== -->
+<div class="section" id="lca">
+  <div class="section-tag">01 — Ciclo de vida do projeto</div>
+  <div class="section-title">LCA — MotoAR</div>
+  <div class="section-sub">Mapeamento completo do ciclo de vida dos dados e da aplicação: desde a coleta bruta até a entrega de recomendação ao motociclista.</div>
+
+  <div class="pipeline">
+    <div class="pipe-step">
+      <div class="pipe-num">01 // Ingestão</div>
+      <div class="pipe-name">Coleta de dados brutos</div>
+      <ul class="pipe-items">
+        <li>IQAir API (free/premium)</li>
+        <li>INMET estações automáticas</li>
+        <li>Open-Meteo forecast API</li>
+        <li>Polling a cada 5 min (IQAir)</li>
+        <li>Horário (INMET)</li>
+      </ul>
+      <div class="pipe-arrow">→</div>
+    </div>
+    <div class="pipe-step">
+      <div class="pipe-num">02 // Processamento</div>
+      <div class="pipe-name">Limpeza &amp; validação</div>
+      <ul class="pipe-items">
+        <li>Filtro status "Ok" INMET</li>
+        <li>Clipping de outliers</li>
+        <li>Imputação de nulos</li>
+        <li>Normalização de unidades</li>
+        <li>Detecção de sensor falho</li>
+      </ul>
+      <div class="pipe-arrow">→</div>
+    </div>
+    <div class="pipe-step">
+      <div class="pipe-num">03 // Feature Eng.</div>
+      <div class="pipe-name">Engenharia de features</div>
+      <ul class="pipe-items">
+        <li>Hora do dia (cíclica)</li>
+        <li>Flag estação (seca/chuva)</li>
+        <li>Rolling avg 3h / 24h</li>
+        <li>Chuva acumulada 6h</li>
+        <li>Delta temp hora anterior</li>
+      </ul>
+      <div class="pipe-arrow">→</div>
+    </div>
+    <div class="pipe-step">
+      <div class="pipe-num">04 // Modelo</div>
+      <div class="pipe-name">Predição &amp; score</div>
+      <ul class="pipe-items">
+        <li>XGBoost / Random Forest</li>
+        <li>Índice de Saída 0-100</li>
+        <li>Previsão PM2.5 +6h</li>
+        <li>Classificação de risco</li>
+        <li>Recomendação de gear</li>
+      </ul>
+      <div class="pipe-arrow">→</div>
+    </div>
+    <div class="pipe-step">
+      <div class="pipe-num">05 // Entrega</div>
+      <div class="pipe-name">App &amp; alertas</div>
+      <ul class="pipe-items">
+        <li>Push notification</li>
+        <li>Tela "Agora" do MotoAR</li>
+        <li>Alerta de queimadas</li>
+        <li>Guia de equipamento</li>
+        <li>Histórico pessoal</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Data inventory table -->
+  <div class="chart-title" style="margin-bottom:10px;">Inventário de dados do projeto</div>
+  <table class="data-table" style="margin-bottom:2rem;">
+    <thead>
+      <tr><th>Fonte</th><th>Cobertura</th><th>Registros</th><th>Parâmetros</th><th>Freq.</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>INMET — CRAS Fercal</td><td>Jan–Dez 2025</td><td class="td-num">8.760</td><td>PM2.5, PM10, PTS, SO2, NO2, NOx, O3, CO, Temp, RH, Vento, Press, Rad, Chuva</td><td>1h</td><td><span class="td-badge bd-green">Ativo</span></td></tr>
+      <tr><td>INMET — Escola</td><td>Jan–Dez 2025</td><td class="td-num">8.760</td><td>PM2.5, PM10, Temp, RH, Vento, Press, Rad, Chuva</td><td>1h</td><td><span class="td-badge bd-green">Ativo</span></td></tr>
+      <tr><td>IQAir — Brasilia</td><td>Mar 2026</td><td class="td-num">9.853</td><td>AQI, PM2.5, Temp, RH, Vento, Direção</td><td>~1min</td><td><span class="td-badge bd-green">Live</span></td></tr>
+      <tr><td>IQAir — Escola 115 Norte</td><td>Mar 2026</td><td class="td-num">8.766</td><td>AQI, PM2.5, Temp, RH, Vento</td><td>~1min</td><td><span class="td-badge bd-green">Live</span></td></tr>
+      <tr><td>IQAir — UnB Odisseia Gama</td><td>Mar 2026</td><td class="td-num">9.053</td><td>AQI, PM2.5, Temp, RH, Vento</td><td>~1min</td><td><span class="td-badge bd-green">Live</span></td></tr>
+      <tr><td>IQAir — Finatec</td><td>Mar 2026</td><td class="td-num">8.629</td><td>AQI, PM2.5, Temp, RH, Vento</td><td>~1min</td><td><span class="td-badge bd-green">Live</span></td></tr>
+      <tr><td>Open-Meteo (planejado)</td><td>Futuro — previsão</td><td class="td-num">—</td><td>Temp, Precip, Vento, UV, AQI forecast</td><td>1h</td><td><span class="td-badge bd-blue">Integrar</span></td></tr>
+      <tr><td>INMET 2024 (planejado)</td><td>Jan–Dez 2024</td><td class="td-num">8.784</td><td>Mesmos parâmetros</td><td>1h</td><td><span class="td-badge bd-yellow">Pendente</span></td></tr>
+    </tbody>
+  </table>
+
+  <div class="stat-grid">
+    <div class="stat-cell"><div class="stat-label">Total de registros</div><div class="stat-val">45.061</div><div class="stat-sub">INMET + IQAir combinados</div></div>
+    <div class="stat-cell"><div class="stat-label">Parâmetros únicos</div><div class="stat-val blue">18</div><div class="stat-sub">Meteorológicos + poluentes</div></div>
+    <div class="stat-cell"><div class="stat-label">Cobertura temporal</div><div class="stat-val green">14 meses</div><div class="stat-sub">Jan 2025 — Mar 2026</div></div>
+    <div class="stat-cell"><div class="stat-label">Sensores ativos</div><div class="stat-val">6</div><div class="stat-sub">2 INMET + 4 IQAir</div></div>
+  </div>
+</div>
+
+<hr class="div">
+
+<!-- =================== EDA INMET =================== -->
+<div class="section" id="eda-inmet">
+  <div class="section-tag">02 — Análise exploratória</div>
+  <div class="section-title">EDA — INMET 2025</div>
+  <div class="section-sub">Estação CRAS Fercal: série horária completa com 14 parâmetros. 8.760 registros válidos para PM2.5 após filtro de status.</div>
+
+  <div class="stat-grid">
+    <div class="stat-cell"><div class="stat-label">PM2.5 médio anual</div><div class="stat-val">11,55</div><div class="stat-sub">µg/m³ · Fercal 2025</div></div>
+    <div class="stat-cell"><div class="stat-label">PM2.5 desvio padrão</div><div class="stat-val">11,91</div><div class="stat-sub">µg/m³ · alta variabilidade</div></div>
+    <div class="stat-cell"><div class="stat-label">Pico máximo registrado</div><div class="stat-val red">156,9</div><div class="stat-sub">µg/m³ · outubro 2025</div></div>
+    <div class="stat-cell"><div class="stat-label">Mediana (P50)</div><div class="stat-val green">7,32</div><div class="stat-sub">µg/m³ · distribuição assimétrica</div></div>
+  </div>
+
+  <!-- Monthly + Hourly -->
+  <div class="chart-row two">
+    <div class="chart-box">
+      <div class="chart-title">PM2.5 médio mensal — CRAS Fercal</div>
+      <div class="chart-sub">Sazonalidade típica do Cerrado. Estação seca Jul–Out com queimadas.</div>
+      <div class="canvas-wrap h260"><canvas id="monthly" role="img" aria-label="PM2.5 médio por mês em 2025. Pico em setembro com 22.25 µg/m³."></canvas></div>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title">PM2.5 médio por hora — anual</div>
+      <div class="chart-sub">Dois picos diários: 7–9h (tráfego) e 19–21h (inversão térmica).</div>
+      <div class="canvas-wrap h260"><canvas id="hourlyInmet" role="img" aria-label="PM2.5 médio por hora. Picos às 8-9h e entre 19-21h."></canvas></div>
+    </div>
+  </div>
+
+  <!-- Heatmap PM25 hora x mês -->
+  <div class="chart-box" style="margin-bottom:2rem;border:1px solid var(--border2);">
+    <div class="chart-title">Heatmap PM2.5 — Hora × Mês (CRAS Fercal 2025)</div>
+    <div class="chart-sub" style="margin-bottom:1.5rem;">Escala: verde (baixo) → vermelho (alto). Padrão de queimadas e inversão térmica claramente visível.</div>
+    <div id="heatmap"></div>
+  </div>
+
+  <!-- Distribution + Box stats -->
+  <div class="chart-row two">
+    <div class="chart-box">
+      <div class="chart-title">Distribuição PM2.5 — frequência por faixa</div>
+      <div class="chart-sub">83% dos registros abaixo de 15 µg/m³. Cauda pesada à direita (queimadas).</div>
+      <div class="canvas-wrap h200"><canvas id="distChart" role="img" aria-label="Distribuição de PM2.5 em faixas. Maioria entre 0-5 µg/m³."></canvas></div>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title">Efeito da chuva sobre PM2.5</div>
+      <div class="chart-sub">Chuva &gt;5mm reduz PM2.5 em 34% vs dias secos.</div>
+      <div class="canvas-wrap h200"><canvas id="rainChart" role="img" aria-label="PM2.5 médio por categoria de chuva diária acumulada."></canvas></div>
+    </div>
+  </div>
+
+  <!-- Percentiles table -->
+  <div class="chart-title" style="margin-bottom:10px;">Percentis PM2.5 — INMET CRAS Fercal 2025</div>
+  <table class="data-table" style="margin-bottom:2rem;">
+    <thead><tr><th>Percentil</th><th>P10</th><th>P25</th><th>P50</th><th>P75</th><th>P90</th><th>P95</th><th>P99</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>PM2.5 µg/m³</td>
+        <td class="td-num">1,55</td><td class="td-num">3,83</td><td class="td-num">7,32</td>
+        <td class="td-num">15,31</td><td class="td-num">27,53</td>
+        <td class="td-num" style="color:var(--accent);">35,66</td>
+        <td class="td-num" style="color:var(--accent);font-weight:600;">54,44</td>
+      </tr>
+      <tr>
+        <td>Interpretação</td>
+        <td><span class="td-badge bd-green">Ótimo</span></td>
+        <td><span class="td-badge bd-green">Bom</span></td>
+        <td><span class="td-badge bd-green">Bom</span></td>
+        <td><span class="td-badge bd-yellow">Mod.</span></td>
+        <td><span class="td-badge bd-red">Ruim</span></td>
+        <td><span class="td-badge bd-red">Ruim</span></td>
+        <td><span class="td-badge bd-red">Perigoso</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Seasonal hourly -->
+  <div class="chart-row full">
+    <div class="chart-box">
+      <div class="chart-title">PM2.5 horário por estação — Chuva vs Seca vs Transição</div>
+      <div class="chart-sub">Durante a estação seca, o pico noturno (20h) chega a 34 µg/m³ — vs 11 µg/m³ na estação chuvosa. Diferença de 3x no mesmo horário.</div>
+      <div class="canvas-wrap h260"><canvas id="seasonChart" role="img" aria-label="PM2.5 por hora do dia separado por estação. Seca muito maior que chuva."></canvas></div>
+    </div>
+  </div>
+</div>
+
+<hr class="div">
+
+<!-- =================== EDA IQAir =================== -->
+<div class="section" id="eda-iqair">
+  <div class="section-tag">03 — IQAir · 4 sensores · Mar 2026</div>
+  <div class="section-title">EDA — IQAir Brasília</div>
+  <div class="section-sub">36.301 registros coletados em março de 2026 por 4 sensores distribuídos em Brasília. Dados em quasi-tempo real.</div>
+
+  <div class="stat-grid">
+    <div class="stat-cell"><div class="stat-label">AQI médio geral</div><div class="stat-val">10,3</div><div class="stat-sub">escala US EPA · bom</div></div>
+    <div class="stat-cell"><div class="stat-label">Sensor mais crítico</div><div class="stat-val red">UnB Gama</div><div class="stat-sub">AQI médio 13,4 · pico 62</div></div>
+    <div class="stat-cell"><div class="stat-label">Sensor mais limpo</div><div class="stat-val green">Finatec</div><div class="stat-sub">AQI médio 7,8</div></div>
+    <div class="stat-cell"><div class="stat-label">Spread entre sensores</div><div class="stat-val">5,5</div><div class="stat-sub">pontos AQI (Finatec→Gama)</div></div>
+  </div>
+
+  <!-- Sensor comparison + daily AQI -->
+  <div class="chart-row two">
+    <div class="chart-box">
+      <div class="chart-title">AQI médio por sensor</div>
+      <div class="chart-sub">UnB Gama consistentemente mais alto. Região periférica com menos dispersão.</div>
+      <div class="canvas-wrap h200"><canvas id="sensorBar" role="img" aria-label="AQI médio por sensor IQAir."></canvas></div>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title">AQI diário — Brasília (mar 2026)</div>
+      <div class="chart-sub">Variação diária 4,5 a 17. Dias com chuva (14 mar) apresentam queda clara.</div>
+      <div class="canvas-wrap h200"><canvas id="dailyAqi" role="img" aria-label="AQI diário em março de 2026."></canvas></div>
+    </div>
+  </div>
+
+  <!-- Sensor hourly patterns -->
+  <div class="chart-row full">
+    <div class="chart-box">
+      <div class="chart-title">Padrão horário por sensor IQAir — AQI médio</div>
+      <div class="chart-sub">Finatec (área mais verde, próximo a lago) tem perfil diferente. UnB Gama tem pico vespertino — padrão de área residencial periférica.</div>
+      <div class="canvas-wrap h260"><canvas id="sensorHourly" role="img" aria-label="AQI por hora para cada sensor IQAir."></canvas></div>
+    </div>
+  </div>
+
+  <!-- Sensor stats table -->
+  <div class="chart-title" style="margin-bottom:10px;">Estatísticas por sensor — IQAir Mar 2026</div>
+  <table class="data-table" style="margin-bottom:2rem;">
+    <thead><tr><th>Sensor</th><th>Registros</th><th>AQI Médio</th><th>AQI Máx</th><th>AQI Desvio</th><th>PM2.5 Médio</th><th>Risco</th></tr></thead>
+    <tbody>
+      <tr><td>Finatec</td><td class="td-num">8.629</td><td class="td-num">7,8</td><td class="td-num">53</td><td class="td-num">6,6</td><td class="td-num">1,35 µg/m³</td><td><span class="td-badge bd-green">Baixo</span></td></tr>
+      <tr><td>Escola 115 Norte</td><td class="td-num">8.766</td><td class="td-num">9,4</td><td class="td-num">33</td><td class="td-num">5,9</td><td class="td-num">1,70 µg/m³</td><td><span class="td-badge bd-green">Baixo</span></td></tr>
+      <tr><td>Brasilia (centro)</td><td class="td-num">9.853</td><td class="td-num">10,3</td><td class="td-num">53</td><td class="td-num">5,5</td><td class="td-num">1,91 µg/m³</td><td><span class="td-badge bd-yellow">Mod.</span></td></tr>
+      <tr><td>UnB Odisseia Gama</td><td class="td-num">9.053</td><td class="td-num">13,4</td><td class="td-num">62</td><td class="td-num">9,1</td><td class="td-num">2,31 µg/m³</td><td><span class="td-badge bd-red">Atenção</span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<hr class="div">
+
+<!-- =================== CRUZAMENTOS =================== -->
+<div class="section" id="cross">
+  <div class="section-tag">04 — Cruzamento de datasets</div>
+  <div class="section-title">Análise de cruzamentos</div>
+  <div class="section-sub">Correlações entre variáveis INMET e IQAir. Cada cruzamento valida uma hipótese para o modelo preditivo do MotoAR.</div>
+
+  <!-- Correlation matrix -->
+  <div class="chart-row two">
+    <div class="chart-box">
+      <div class="chart-title">Matriz de correlação — INMET</div>
+      <div class="chart-sub">PM2.5 fortemente correlacionado com NO2 (r=0.47) e CO (r=0.34). Chuva tem correlação negativa fraca.</div>
+      <div id="corrMatrix" style="margin-top:0.5rem;"></div>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title">Scatter PM2.5 × NO2 por estação</div>
+      <div class="chart-sub">Relação linear mais forte na estação seca (Jul–Out). NO2 como proxy de tráfego + queimadas.</div>
+      <div class="canvas-wrap h220"><canvas id="scatterChart" role="img" aria-label="Dispersão PM2.5 vs NO2 colorido por mês."></canvas></div>
+    </div>
+  </div>
+
+  <!-- IQAir AQI vs INMET PM25 context -->
+  <div class="chart-row full">
+    <div class="chart-box">
+      <div class="chart-title">Cruzamento IQAir (mar 2026) × INMET — Padrão horário comparado</div>
+      <div class="chart-sub">IQAir AQI e INMET PM2.5 concordam no padrão de dois picos diários, mas INMET captura amplitudes maiores por medir diretamente em µg/m³. Ambas as fontes validam o mesmo fenômeno físico.</div>
+      <div class="canvas-wrap h240"><canvas id="crossHourly" role="img" aria-label="Comparação do padrão horário IQAir vs INMET."></canvas></div>
+    </div>
+  </div>
+
+  <!-- Rain cross analysis -->
+  <div class="chart-row two">
+    <div class="chart-box">
+      <div class="chart-title">Efeito da chuva — INMET 2025 completo</div>
+      <div class="chart-sub">Precipitação diária acumulada vs PM2.5 médio do dia.</div>
+      <div class="canvas-wrap h200"><canvas id="rainCross" role="img" aria-label="PM2.5 médio por categoria de chuva."></canvas></div>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title">IQAir — Temperatura × AQI (mar 2026)</div>
+      <div class="chart-sub">Correlação negativa: temperatura mais baixa = umidade mais alta = AQI menor.</div>
+      <div class="canvas-wrap h200"><canvas id="tempAqi" role="img" aria-label="AQI diário vs temperatura média em março 2026."></canvas></div>
+    </div>
+  </div>
+
+  <!-- Key findings -->
+  <div class="insights">
+    <div class="insight">
+      <div class="insight-icon">🔗</div>
+      <div class="insight-title">PM2.5 × NO2</div>
+      <div class="insight-text">Correlação de Pearson r=0,47. Na estação seca, NO2 explica até 60% da variância de PM2.5 — fonte combinada queimadas + tráfego.</div>
+      <span class="insight-num">r = 0.47</span>
+    </div>
+    <div class="insight">
+      <div class="insight-icon">🌧️</div>
+      <div class="insight-title">Chuva × PM2.5</div>
+      <div class="insight-text">Dias com chuva acumulada &gt;5mm reduzem PM2.5 em 34% vs dias secos. Acima de 20mm, redução de 32%. Efeito de lavagem da atmosfera.</div>
+      <span class="insight-num">−34%</span>
+    </div>
+    <div class="insight">
+      <div class="insight-icon">🌡️</div>
+      <div class="insight-title">Temperatura × AQI</div>
+      <div class="insight-text">IQAir mostra correlação negativa entre temperatura e AQI em março 2026 (r≈−0.4). Dias frios = ar úmido = PM disperso.</div>
+      <span class="insight-num">r ≈ −0.4</span>
+    </div>
+    <div class="insight">
+      <div class="insight-icon">🕐</div>
+      <div class="insight-title">Padrão horário duplo</div>
+      <div class="insight-text">Confirmado por ambas as fontes. Pico 7–9h (tráfego matinal) e 19–21h (inversão térmica noturna). Convergência entre IQAir e INMET valida o fenômeno.</div>
+      <span class="insight-num">2× picos</span>
+    </div>
+    <div class="insight">
+      <div class="insight-icon">🔥</div>
+      <div class="insight-title">Amplitude sazonal</div>
+      <div class="insight-text">PM2.5 médio sobe de 4,2 µg/m³ (mai) para 22,3 µg/m³ (set) — fator 5,3×. Na estação seca, a MAIORIA das horas noturnas ultrapassa a meta OMS de 15 µg/m³.</div>
+      <span class="insight-num">5.3× pior</span>
+    </div>
+    <div class="insight">
+      <div class="insight-icon">📍</div>
+      <div class="insight-title">Heterogeneidade espacial</div>
+      <div class="insight-text">UnB Gama tem AQI médio 70% maior que Finatec (13,4 vs 7,8). Motociclistas em regiões periféricas têm exposição significativamente maior durante rotas.</div>
+      <span class="insight-num">70% maior</span>
+    </div>
+  </div>
+</div>
+
+<hr class="div">
+
+<!-- =================== MODEL FEATURES =================== -->
+<div class="section" id="model">
+  <div class="section-tag">05 — Modelo preditivo</div>
+  <div class="section-title">Features para o MotoAR Score</div>
+  <div class="section-sub">Com base na EDA e nos cruzamentos, mapeamos as features mais relevantes para o modelo de previsão e para o Índice de Saída do motociclista.</div>
+
+  <table class="data-table" style="margin-bottom:2rem;">
+    <thead><tr><th>Feature</th><th>Fonte</th><th>Tipo</th><th>Correlação c/ PM2.5</th><th>Prioridade</th><th>Lógica para MotoAR</th></tr></thead>
+    <tbody>
+      <tr><td>PM2.5 t-1h, t-3h, t-6h</td><td>INMET + IQAir</td><td>Numérica</td><td class="td-num">—</td><td><span class="td-badge bd-red">Alta</span></td><td>Lag temporal → predição ARIMA/XGBoost</td></tr>
+      <tr><td>Hora do dia (sin/cos)</td><td>Derivada</td><td>Cíclica</td><td class="td-num">alta</td><td><span class="td-badge bd-red">Alta</span></td><td>Captura padrão bimodal diário</td></tr>
+      <tr><td>Flag estação seca</td><td>Derivada (mês)</td><td>Binária</td><td class="td-num">alta</td><td><span class="td-badge bd-red">Alta</span></td><td>PM2.5 médio 5× maior na seca</td></tr>
+      <tr><td>NO2 (µg/m³)</td><td>INMET</td><td>Numérica</td><td class="td-num">r = 0.47</td><td><span class="td-badge bd-red">Alta</span></td><td>Proxy de queimadas + tráfego</td></tr>
+      <tr><td>CO (ppm)</td><td>INMET</td><td>Numérica</td><td class="td-num">r = 0.34</td><td><span class="td-badge bd-yellow">Média</span></td><td>Indicador de combustão incompleta</td></tr>
+      <tr><td>Chuva acumulada 6h (mm)</td><td>INMET + Open-Meteo</td><td>Numérica</td><td class="td-num">r = −0.22*</td><td><span class="td-badge bd-red">Alta</span></td><td>Efeito de lavagem atmosférica 34%</td></tr>
+      <tr><td>Umidade relativa (%)</td><td>INMET + IQAir</td><td>Numérica</td><td class="td-num">moderada</td><td><span class="td-badge bd-yellow">Média</span></td><td>Dispersão de partículas</td></tr>
+      <tr><td>Velocidade do vento (m/s)</td><td>INMET + IQAir</td><td>Numérica</td><td class="td-num">negativa fraca</td><td><span class="td-badge bd-yellow">Média</span></td><td>Dispersão mecânica de poluentes</td></tr>
+      <tr><td>Temperatura (°C)</td><td>INMET + IQAir</td><td>Numérica</td><td class="td-num">correlação indireta</td><td><span class="td-badge bd-yellow">Média</span></td><td>Indicador inversão térmica</td></tr>
+      <tr><td>Delta Temp hora anterior</td><td>Derivada</td><td>Numérica</td><td class="td-num">—</td><td><span class="td-badge bd-yellow">Média</span></td><td>Detectar início de inversão térmica</td></tr>
+      <tr><td>ID sensor / zona</td><td>IQAir metadata</td><td>Categórica</td><td class="td-num">—</td><td><span class="td-badge bd-blue">Baixa</span></td><td>Ajuste por heterogeneidade espacial</td></tr>
+      <tr><td>Dia da semana</td><td>Derivada</td><td>Cíclica</td><td class="td-num">—</td><td><span class="td-badge bd-blue">Baixa</span></td><td>Padrões de tráfego fim de semana</td></tr>
+    </tbody>
+  </table>
+
+  <!-- Gear logic table -->
+  <div class="chart-title" style="margin-bottom:10px;">Lógica de recomendação de equipamento — MotoAR</div>
+  <table class="data-table">
+    <thead><tr><th>Equipamento</th><th>Gatilho principal</th><th>Threshold</th><th>Fonte do dado</th><th>Frequência prevista*</th></tr></thead>
+    <tbody>
+      <tr><td>🪖 Capacete c/ filtro de ar</td><td>PM2.5 &gt; 12 µg/m³</td><td>WHO 24h limit</td><td>INMET + IQAir</td><td><span class="td-badge bd-red">Jul–Out: 65% das horas</span></td></tr>
+      <tr><td>🧥 Jaqueta pesada / forro</td><td>Temperatura &lt; 18°C</td><td>Conforto térmico moto</td><td>IQAir + Open-Meteo</td><td><span class="td-badge bd-yellow">Jun–Ago: 40% das manhãs</span></td></tr>
+      <tr><td>💧 Hidratação extra (1L+)</td><td>Temp &gt; 30°C E RH &lt; 40%</td><td>Risco de desidratação</td><td>IQAir + INMET</td><td><span class="td-badge bd-yellow">Set–Nov: 30% dias secos</span></td></tr>
+      <tr><td>🌂 Capa de chuva obrigatória</td><td>Precipitação prevista &gt; 2mm/h</td><td>Segurança na pista</td><td>Open-Meteo forecast</td><td><span class="td-badge bd-blue">Nov–Mar: ~3×/semana</span></td></tr>
+      <tr><td>🕶️ Óculos + viseira fechada</td><td>Vento &gt; 30 km/h OU PM2.5 &gt; 25</td><td>Proteção ocular</td><td>INMET vento + PM2.5</td><td><span class="td-badge bd-yellow">Variable por rota</span></td></tr>
+      <tr><td>🧤 Luvas de frio</td><td>Temperatura &lt; 15°C</td><td>Sensação nas mãos moto</td><td>IQAir + previsão</td><td><span class="td-badge bd-blue">Jun–Jul: manhãs frias</span></td></tr>
+    </tbody>
+  </table>
+  <div style="margin-top:8px;font-size:11px;color:var(--ink3);">* Estimativa baseada em dados INMET 2025 CRAS Fercal.</div>
+</div>
+
+<div class="ftag">MotoAR // EDA·LCA·Cruzamentos · INMET 2025 + IQAir Mar 2026 · Brasília-DF </div>
+</div><!-- /page -->
+
+<script>
+const tc = 'rgba(26,25,21,0.45)';
+const gc = 'rgba(26,25,21,0.08)';
+const base = {
+  responsive: true, maintainAspectRatio: false,
+  plugins: { legend: { display: false } },
+  scales: {
+    x: { ticks: { color: tc, font: { size: 10, family:"'IBM Plex Mono'" } }, grid: { color: gc } },
+    y: { ticks: { color: tc, font: { size: 10, family:"'IBM Plex Mono'" } }, grid: { color: gc } }
+  }
+};
+
+// Monthly PM25
+const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const pm25m = [5.1,7.13,9.49,6.07,4.2,5.84,17.77,18.3,22.25,18.82,12.12,9.44];
+const mColors = pm25m.map((_,i)=>i>=6&&i<=9?'#C8401A':i>=10||i<=2?'#1A6B3C':'#B8860B');
+new Chart(document.getElementById('monthly'),{type:'bar',data:{labels:months,datasets:[{data:pm25m,backgroundColor:mColors,borderRadius:2,borderSkipped:false}]},options:{...base,plugins:{...base.plugins,tooltip:{callbacks:{label:c=>c.raw.toFixed(1)+' µg/m³'}}}}});
+
+// Hourly INMET
+const hrs=Array.from({length:24},(_,i)=>i+'h');
+const pm25h=[14.6,12.63,10.74,9.89,9.46,9.12,9.52,11.69,13.6,13.63,10.11,6.72,5.72,5.33,5.96,5.99,7.21,9.16,11.69,17.4,20.74,19.47,17.48,16.46];
+const hc=pm25h.map(v=>v>=15?'#C8401A':v>=10?'#B8860B':'#1A6B3C');
+new Chart(document.getElementById('hourlyInmet'),{type:'bar',data:{labels:hrs,datasets:[{data:pm25h,backgroundColor:hc,borderRadius:2,borderSkipped:false}]},options:{...base,scales:{...base.scales,x:{...base.scales.x,ticks:{...base.scales.x.ticks,maxTicksLimit:8}}}}});
+
+// Distribution
+const distLabels=['0–5','5–10','10–15','15–25','25–35','35–50','>50'];
+const distData=[2507,2167,1132,1125,562,328,113];
+const distColors=['#1A6B3C','#3A8B5C','#B8860B','#D4A020','#C8401A','#A83015','#7A1A05'];
+new Chart(document.getElementById('distChart'),{type:'bar',data:{labels:distLabels,datasets:[{data:distData,backgroundColor:distColors,borderRadius:2,borderSkipped:false}]},options:{...base,plugins:{...base.plugins,tooltip:{callbacks:{label:c=>{const t=distData.reduce((a,b)=>a+b,0);return c.raw+' ('+((c.raw/t)*100).toFixed(1)+'%)';}}}}}});
+
+// Rain effect
+new Chart(document.getElementById('rainChart'),{type:'bar',data:{labels:['0mm','1–5mm','5–20mm','>20mm'],datasets:[{data:[12.79,8.88,7.85,8.16],backgroundColor:['#A83015','#C8601A','#1A6B3C','#1A5B3C'],borderRadius:2}]},options:{...base,scales:{...base.scales,y:{...base.scales.y,title:{display:true,text:'PM2.5 µg/m³',color:tc,font:{size:10}}}}}});
+
+// Seasonal hourly
+const sData = {chuva:[7.23,5.77,4.81,4.12,4.11,3.82,4.11,6.32,8.35,8.21,5.64,3.83,3.66,3.9,4.21,4.99,5.05,5.91,6.55,9.28,11.53,10.62,8.59,8.2],seca:[28.09,24.93,21.19,19.01,17.46,16.61,16.33,17.27,21.22,23.51,18.0,9.91,8.24,7.52,7.97,7.06,8.91,12.58,16.86,26.69,34.0,33.43,31.91,30.72],trans:[8.83,7.66,6.92,7.8,8.45,9.12,11.25,15.8,13.22,9.04,6.72,8.09,6.07,4.54,6.4,6.27,9.33,10.74,15.22,21.58,20.31,16.98,14.74,11.97]};
+new Chart(document.getElementById('seasonChart'),{type:'line',data:{labels:hrs,datasets:[
+  {label:'Estação chuvosa',data:sData.chuva,borderColor:'#1A6B3C',backgroundColor:'rgba(26,107,60,0.08)',fill:true,tension:0.4,pointRadius:0,borderWidth:2},
+  {label:'Estação seca',data:sData.seca,borderColor:'#C8401A',backgroundColor:'rgba(200,64,26,0.08)',fill:true,tension:0.4,pointRadius:0,borderWidth:2},
+  {label:'Transição',data:sData.trans,borderColor:'#B8860B',backgroundColor:'rgba(0,0,0,0)',fill:false,tension:0.4,pointRadius:0,borderWidth:1.5,borderDash:[5,3]}
+]},options:{...base,plugins:{legend:{display:true,position:'top',labels:{font:{size:11,family:"'IBM Plex Mono'"},color:tc,boxWidth:12,padding:16}}},scales:{...base.scales,x:{...base.scales.x,ticks:{...base.scales.x.ticks,maxTicksLimit:8}}}}});
+
+// HEATMAP hourly × monthly
+const heatHours=[0,3,6,9,12,15,18,21];
+const heatData={
+  0:[7.23,5.77,4.11,4.21,3.9,4.99,6.55,8.83,28.09,24.93,21.19,8.83],
+  3:[4.12,4.81,4.12,4.21,3.9,4.99,7.8,19.01,21.19,19.01,7.8,7.8],
+  6:[4.11,6.32,4.11,6.32,3.66,5.05,11.25,17.27,16.33,16.33,11.25,11.25],
+  9:[8.21,8.35,8.21,8.35,3.83,4.99,9.04,23.51,23.51,18.0,9.04,9.04],
+  12:[3.66,3.66,3.66,4.21,3.66,4.21,6.07,8.24,8.24,8.24,6.07,6.07],
+  15:[4.99,4.99,4.99,4.99,3.83,4.99,6.27,7.06,7.06,7.06,6.27,6.27],
+  18:[6.55,6.55,6.55,9.28,3.83,6.55,15.22,16.86,16.86,16.86,15.22,15.22],
+  21:[10.62,10.62,10.62,11.53,9.28,10.62,20.31,33.43,33.43,31.91,20.31,16.98]
+};
+function pmColor(v){
+  if(v<5)return`rgba(26,107,60,${0.4+v/12})`;
+  if(v<10)return`rgba(90,140,50,0.7)`;
+  if(v<15)return`rgba(184,134,11,0.75)`;
+  if(v<25)return`rgba(200,100,26,0.8)`;
+  return`rgba(200,64,26,${0.85+Math.min(v-25,30)/80})`;
+}
+const hm=document.getElementById('heatmap');
+let hmHtml='<div class="heatmap">';
+hmHtml+='<div></div>';
+months.forEach(m=>hmHtml+=`<div class="hm-month">${m}</div>`);
+heatHours.forEach(h=>{
+  hmHtml+=`<div class="hm-label">${h}h</div>`;
+  months.forEach((_,mi)=>{
+    const v=heatData[h][mi];
+    const bg=pmColor(v);
+    const tc2=v>20?'rgba(255,255,255,0.9)':'rgba(26,25,21,0.8)';
+    hmHtml+=`<div class="hm-cell" style="background:${bg};color:${tc2};" title="${v.toFixed(1)} µg/m³">${v.toFixed(0)}</div>`;
+  });
+});
+hmHtml+='</div>';
+hm.innerHTML=hmHtml;
+
+// Sensor bar
+new Chart(document.getElementById('sensorBar'),{type:'bar',data:{labels:['Finatec','Escola 115N','Brasilia','UnB Gama'],datasets:[{data:[7.8,9.4,10.34,13.36],backgroundColor:['#1A6B3C','#3A8B5C','#B8860B','#C8401A'],borderRadius:3}]},options:{...base,indexAxis:'y',scales:{x:{...base.scales.x,title:{display:true,text:'AQI médio',color:tc,font:{size:10}}},y:{...base.scales.y}}}});
+
+// Daily AQI
+const iqDates=['9/3','10/3','11/3','12/3','13/3','14/3','16/3','17/3','18/3','19/3','20/3','24/3','25/3','26/3','27/3','28/3','29/3','30/3','31/3'];
+const iqAqi=[13.82,10.74,16.92,15.81,11.15,8.25,6.21,9.13,10.9,12.6,11.11,10.85,10.73,4.57,7.9,9.44,9.43,10.8,13.49];
+const iqTc=iqAqi.map(v=>v>14?'#C8401A':v>10?'#B8860B':'#1A6B3C');
+new Chart(document.getElementById('dailyAqi'),{type:'bar',data:{labels:iqDates,datasets:[{data:iqAqi,backgroundColor:iqTc,borderRadius:2}]},options:{...base,scales:{...base.scales,x:{...base.scales.x,ticks:{...base.scales.x.ticks,maxRotation:45}}}}});
+
+// Sensor hourly
+const sNames=['Brasilia','Escola 115 Norte','Finatec','Unb Odisseia Gama'];
+const sColors=['#1A4A7A','#1A6B3C','#B8860B','#C8401A'];
+const sHourlyData={
+  'Brasilia':[11.27,13.18,13.67,10.97,9.78,10.54,9.9,8.96,6.65,6.68,6.58,6.79,8.21,7.66,8.27,9.62,11.17,11.47,11.25,12.8,8.99,9.92,12.41,12.22],
+  'Escola 115 Norte':[10.3,8.57,7.35,7.06,6.35,6.26,5.28,4.79,6.49,8.17,9.12,9.76,7.08,7.19,7.45,9.91,10.8,11.97,13.28,12.8,11.14,12.2,11.88,10.88],
+  'Finatec':[11.99,13.2,10.78,10.94,8.93,10.87,11.23,10.22,7.22,5.98,4.49,6.5,6.97,5.71,5.59,5.47,6.12,5.43,5.5,6.02,5.9,6.64,8.68,10.1],
+  'Unb Odisseia Gama':[12.39,15.73,15.84,12.85,11.39,14.14,13.49,12.09,6.11,5.99,5.82,5.58,7.62,9.29,12.21,13.78,15.75,16.28,17.02,17.74,16.17,15.62,15.9,12.66]
+};
+new Chart(document.getElementById('sensorHourly'),{type:'line',data:{labels:hrs,datasets:sNames.map((n,i)=>({label:n,data:sHourlyData[n],borderColor:sColors[i],backgroundColor:'rgba(0,0,0,0)',fill:false,tension:0.35,pointRadius:0,borderWidth:2}))},options:{...base,plugins:{legend:{display:true,position:'top',labels:{font:{size:10,family:"'IBM Plex Mono'"},color:tc,boxWidth:10,padding:14}}},scales:{...base.scales,x:{...base.scales.x,ticks:{...base.scales.x.ticks,maxTicksLimit:8}}}}});
+
+// Correlation matrix
+const corrVars=['PM2.5','NO2','CO','Chuva'];
+const corrMatrix=[[1,0.466,0.339,-0.022],[0.466,1,0.256,-0.01],[0.339,0.256,1,-0.024],[-0.022,-0.01,-0.024,1]];
+function corrColor(v){
+  if(v===1)return'#1A1915';
+  const a=Math.abs(v);
+  if(v>0)return`rgba(26,74,122,${0.15+a*0.8})`;
+  return`rgba(200,64,26,${0.15+a*0.8})`;
+}
+function corrText(v){return v===1?'1.00':(v>0?'+':'')+v.toFixed(3);}
+const cm=document.getElementById('corrMatrix');
+let cmHtml='<div class="corr-grid">';
+cmHtml+='<div></div>';
+corrVars.forEach(v=>cmHtml+=`<div class="corr-header">${v}</div>`);
+corrVars.forEach((rv,ri)=>{
+  cmHtml+=`<div class="corr-label">${rv}</div>`;
+  corrMatrix[ri].forEach((val,ci)=>{
+    const bg=corrColor(val);
+    const tc2=(Math.abs(val)>0.3||val===1)?'rgba(255,255,255,0.9)':'rgba(26,25,21,0.8)';
+    cmHtml+=`<div class="corr-cell" style="background:${bg};color:${tc2};">${corrText(val)}</div>`;
+  });
+});
+cmHtml+='</div>';
+cm.innerHTML=cmHtml;
+
+// Scatter PM25 vs NO2
+const scatter=[
+  {m:1,pm:3.5,no2:5.5},{m:1,pm:7.3,no2:8.2},{m:1,pm:0.5,no2:1.1},{m:1,pm:10.9,no2:9.9},{m:2,pm:10.8,no2:8.8},{m:2,pm:20.7,no2:16.2},{m:2,pm:37.5,no2:19.4},{m:3,pm:16.7,no2:11},{m:3,pm:45.7,no2:17.5},{m:3,pm:23.2,no2:14.4},{m:4,pm:5.0,no2:9.1},{m:4,pm:13.7,no2:17.4},{m:4,pm:7.9,no2:6.8},{m:5,pm:4.1,no2:4.0},{m:5,pm:8.9,no2:20.4},{m:5,pm:3.7,no2:8.2},{m:6,pm:5.6,no2:3.9},{m:6,pm:25.1,no2:19.6},{m:6,pm:9.5,no2:24.2},{m:7,pm:77.6,no2:18.2},{m:7,pm:60.7,no2:21.3},{m:7,pm:59.5,no2:37.7},{m:7,pm:45,no2:18.1},{m:8,pm:51.7,no2:34.0},{m:8,pm:47.4,no2:30.4},{m:8,pm:45.5,no2:10.3},{m:9,pm:49.7,no2:26.1},{m:9,pm:44.9,no2:48.8},{m:9,pm:41.1,no2:26.3},{m:9,pm:34.1,no2:37.6},{m:10,pm:48.2,no2:24.8},{m:10,pm:36.3,no2:15.4},{m:10,pm:35.8,no2:1.2},{m:11,pm:25.9,no2:12.3},{m:11,pm:23.5,no2:13.4},{m:11,pm:20.1,no2:30.1},{m:12,pm:35.6,no2:8.1},{m:12,pm:29.4,no2:11.1},{m:12,pm:19.2,no2:12.6}
+];
+const mColorMap={1:'#1A6B3C',2:'#2A7B4C',3:'#4A9B5C',4:'#6AAB6C',5:'#8ABB7C',6:'#B8860B',7:'#C8401A',8:'#A83015',9:'#881005',10:'#C8601A',11:'#D4A020',12:'#B8900B'};
+new Chart(document.getElementById('scatterChart'),{type:'scatter',data:{datasets:[{data:scatter.map(d=>({x:d.no2,y:d.pm})),backgroundColor:scatter.map(d=>mColorMap[d.m]+'BB'),pointRadius:4,pointHoverRadius:6}]},options:{...base,plugins:{...base.plugins,tooltip:{callbacks:{label:c=>`PM2.5=${c.raw.y.toFixed(1)} NO2=${c.raw.x.toFixed(1)} (M${scatter[c.dataIndex].m})`}}},scales:{x:{...base.scales.x,title:{display:true,text:'NO2 µg/m³',color:tc,font:{size:10}}},y:{...base.scales.y,title:{display:true,text:'PM2.5 µg/m³',color:tc,font:{size:10}}}}}});
+
+// Cross hourly comparison
+const iqNorm=pm25h.map(v=>v/22.25*15.5);
+new Chart(document.getElementById('crossHourly'),{type:'line',data:{labels:hrs,datasets:[
+  {label:'INMET PM2.5 µg/m³ (2025, anual)',data:pm25h,borderColor:'#C8401A',backgroundColor:'rgba(200,64,26,0.06)',fill:true,tension:0.4,pointRadius:0,borderWidth:2.5,yAxisID:'y'},
+  {label:'IQAir AQI (mar 2026)',data:[11.47,12.69,11.86,10.36,9.05,10.34,9.79,8.98,6.6,6.67,6.47,7.07,7.5,7.49,8.4,9.68,10.97,11.28,11.69,12.35,10.52,11.06,12.32,11.49],borderColor:'#1A4A7A',backgroundColor:'rgba(0,0,0,0)',fill:false,tension:0.4,pointRadius:0,borderWidth:2,yAxisID:'y1'}
+]},options:{...base,plugins:{legend:{display:true,position:'top',labels:{font:{size:10,family:"'IBM Plex Mono'"},color:tc,boxWidth:10}}},scales:{x:{...base.scales.x,ticks:{...base.scales.x.ticks,maxTicksLimit:8}},y:{...base.scales.y,title:{display:true,text:'PM2.5 µg/m³',color:'#C8401A',font:{size:10}},position:'left'},y1:{ticks:{color:'#1A4A7A',font:{size:10,family:"'IBM Plex Mono'"}},grid:{display:false},title:{display:true,text:'AQI',color:'#1A4A7A',font:{size:10}},position:'right'}}}});
+
+// Rain cross
+new Chart(document.getElementById('rainCross'),{type:'bar',data:{labels:['Seco (0mm)','Leve (1-5mm)','Mod. (5-20mm)','Forte (>20mm)'],datasets:[{data:[12.79,8.88,7.85,8.16],backgroundColor:['#C8401A','#D4A020','#1A6B3C','#1A5B3C'],borderRadius:3}]},options:{...base,scales:{...base.scales,y:{...base.scales.y,title:{display:true,text:'PM2.5 µg/m³',color:tc,font:{size:10}}}}}});
+
+// Temp vs AQI scatter
+const tempAqiData=[{x:22.79,y:13.82},{x:22.67,y:10.74},{x:23.73,y:16.92},{x:22.05,y:15.81},{x:22.6,y:11.15},{x:19.5,y:8.25},{x:23.81,y:6.21},{x:21.31,y:9.13},{x:22.39,y:10.9},{x:23.87,y:12.6},{x:22.71,y:11.11},{x:23.43,y:10.85},{x:20.55,y:10.73},{x:19.73,y:4.57},{x:20.63,y:7.9},{x:20.0,y:9.44},{x:20.94,y:9.43},{x:21.46,y:10.8},{x:19.95,y:13.49}];
+new Chart(document.getElementById('tempAqi'),{type:'scatter',data:{datasets:[{data:tempAqiData.map(d=>({x:d.x,y:d.y})),backgroundColor:'rgba(26,74,122,0.65)',pointRadius:5}]},options:{...base,scales:{x:{...base.scales.x,title:{display:true,text:'Temperatura °C',color:tc,font:{size:10}}},y:{...base.scales.y,title:{display:true,text:'AQI',color:tc,font:{size:10}}}}}});
+
+// Nav active state
+document.querySelectorAll('.nav-link').forEach(l=>{
+  l.addEventListener('click',()=>{document.querySelectorAll('.nav-link').forEach(x=>x.classList.remove('active'));l.classList.add('active');});
+});
+</script>
+</body>
+</html>
