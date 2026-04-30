@@ -1,256 +1,197 @@
 # Projeto-egenharia-de-dados
-# 🎵 SoundFlow Data
+# MotoAR — Plataforma de Qualidade do Ar para Motociclistas de Brasília
 
-> **Disciplina:** Engenharia de Dados — Centro Universitário de Brasília (CEUB)
-> **Professor:** Luis C. Cardoso
-> **Equipe:** [Alessandra Gonçalves] · [Luiz Henrique] · [Rafael Mascarenhas]
+> Projeto de Engenharia de Dados — UniCEUB | Disciplina: Engenharia de Dados  
+> Professor: Luis Carlos Cardoso | Brasília, 2026
 
-Planejamento arquitetural de uma plataforma de engenharia de dados para um serviço de streaming musical. O projeto cobre o ciclo de vida completo dos dados — da ingestão ao consumo — aplicando conceitos de **Data Mesh**, **Domain-Driven Design**, **Arquitetura Lakehouse** e **Padrão Lambda**.
+**Equipe:**
+- Alessandra Gonçalves
+- Luiz Henrique 
+- Rafael Mascarenhas
 
----
-
-## 📋 Sumário
-
-- [Sobre o Projeto](#sobre-o-projeto)
-- [Domínios de Negócio](#domínios-de-negócio)
-- [Arquitetura](#arquitetura)
-- [Fontes e Classificação dos Dados](#fontes-e-classificação-dos-dados)
-- [Stack Tecnológica](#stack-tecnológica)
-- [Segurança e Governança](#segurança-e-governança)
-- [Trade-offs](#trade-offs)
-- [Estrutura do Repositório](#estrutura-do-repositório)
-- [Parte 2 — Implementação](#parte-2--implementação)
-- [Referências](#referências)
+**Repositório:** [github.com/alessandra2307/Projeto-egenharia-de-dados](https://github.com/alessandra2307/Projeto-egenharia-de-dados)
 
 ---
 
 ## Sobre o Projeto
 
-O **SoundFlow Data** é uma plataforma de engenharia de dados inspirada em serviços como Spotify e Deezer. O problema central é processar dois tipos de dados com requisitos opostos:
+O **MotoAR** é uma plataforma de dados que coleta, processa e analisa informações de **qualidade do ar e condições meteorológicas em Brasília**, gerando recomendações práticas e personalizadas para motociclistas.
 
-- **Streaming em tempo real** — até 50.000 eventos/segundo (plays, skips, likes), com latência abaixo de 30 segundos para métricas ao vivo
-- **Batch histórico de alta precisão** — cálculo exato de royalties, relatórios financeiros e enriquecimento de catálogo
+### O Problema
 
-A solução adota um **Lakehouse com Padrão Lambda**, unificando um único sistema de armazenamento para ambos os caminhos, eliminando a necessidade de manter dois sistemas separados sincronizados.
+Brasília concentra mais de **500 mil motocicletas**, e seus condutores ficam expostos diretamente ao ar externo durante toda a jornada — sem qualquer filtração. Durante a estação seca (que pode durar de 4 a 6 meses), os índices de PM2.5 chegam a ultrapassar **5 vezes** os valores da estação chuvosa, superando frequentemente os limites recomendados pela OMS.
+
+Apesar desse risco mensurável, **nenhuma ferramenta pública e acessível** integra dados de poluição atmosférica com recomendações de equipamento de proteção para motociclistas.
+
+### A Solução
+
+O MotoAR preenche essa lacuna com um pipeline robusto que:
+
+- Coleta dados de múltiplas fontes (IQAir, INMET, Open-Meteo)
+- Processa e transforma os dados em uma Arquitetura Medalhão com Delta Lake
+- Treina um modelo preditivo (XGBoost) para gerar um **score de qualidade do ar para as próximas 6 horas**
+- Entrega recomendações práticas ao motociclista: qual equipamento usar, alertas de queimada, inversão térmica noturna
 
 ---
 
-## Domínios de Negócio
+## Fontes de Dados
 
-O projeto segue os princípios de **baixo acoplamento e alta coesão** do Domain-Driven Design, organizados em cinco domínios com ownership claro sobre seus próprios dados:
+| Fonte | Cobertura | Registros | Parâmetros | Frequência |
+|---|---|---|---|---|
+| INMET — CRAS Fercal | Jan–Dez 2025 | 8.760 | 14 | Horária |
+| INMET — Escola | Jan–Dez 2025 | 8.760 | 8 | Horária |
+| IQAir — Brasília | Mar 2026 | 9.853 | 5 | ~1 minuto |
+| IQAir — Escola 115 | Mar 2026 | 8.766 | 5 | ~1 minuto |
+| IQAir — UnB Gama | Mar 2026 | 9.053 | 5 | ~1 minuto |
+| IQAir — Finatec | Mar 2026 | 8.629 | 5 | ~1 minuto |
+| Open-Meteo | Futuro | — | 6 (forecast) | 6 horas |
+| INMET 2024 | Jan–Dez 2024 | 8.784 | 14 | Horária |
 
-```
-┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-│   Catálogo  │  │  Usuários   │  │  Streaming  │  │  Financeiro │  │  Analytics  │
-│             │  │             │  │             │  │             │  │             │
-│ catalog-    │  │ user-       │  │ event-      │  │ billing-    │  │ data-wh-    │
-│ ingestor    │  │ profile-svc │  │ collector   │  │ service     │  │ layer       │
-│ catalog-    │  │ auth-       │  │ stream-     │  │ royalty-    │  │ ml-feature- │
-│ enricher    │  │ service     │  │ processor   │  │ calculator  │  │ store       │
-│ catalog-api │  │ subscription│  │ engagement- │  │ revenue-    │  │ dashboard-  │
-│             │  │ service     │  │ aggregator  │  │ reporter    │  │ service     │
-└─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘
-                           │               │               │
-                    ┌──────┴───────────────┴───────────────┴──────┐
-                    │              Serviços Compartilhados          │
-                    │  Airflow  │  Schema Registry  │  Great       │
-                    │           │  (Contratos Avro) │  Expectations│
-                    │  Grafana (Observabilidade)                    │
-                    └───────────────────────────────────────────────┘
-```
+**Total coletado:** 45.061 registros  
+**Crescimento estimado:** ~17.520 novos registros/mês  
+**Formato final de armazenamento:** Parquet (via Delta Lake)
 
 ---
 
 ## Arquitetura
 
-### Padrão Lambda + Arquitetura Medalhão
+O MotoAR utiliza a **Arquitetura Medalhão (Medallion Architecture)** com Delta Lake, organizada em três camadas progressivas de qualidade:
 
 ```
-ORIGEM              INGESTÃO         ARMAZENAMENTO (LAKEHOUSE)     TRANSFORMAÇÃO    CONSUMO
-                                     MinIO + Delta Lake
-┌──────────┐     ┌──────────┐       ┌────────────────────┐
-│ SDK      │────▶│  Kafka   │──────▶│   Bronze (raw)     │──Flink──▶ Metabase
-│ (Events) │     │  (Avro)  │       │   imutável         │
-└──────────┘     └──────────┘       ├────────────────────┤
-                                    │   Silver (clean)   │──Spark──▶ API REST
-┌──────────┐     ┌──────────┐       │   deduplicado      │           MLflow
-│  Bancos  │────▶│ Airbyte  │──────▶├────────────────────┤
-│  + APIs  │     │  (CDC)   │       │   Gold (analytics) │──dbt────▶ Metabase
-└──────────┘     └──────────┘       │   pronto p/ consumo│           API REST
-                                    └────────────────────┘
-                      ▲─────────────────── Airflow (Orquestração Batch) ────────────────▶
+ORIGEM (APIs)
+    │
+    ▼
+[INGESTÃO] ──── Python Requests + Schedule (batch + micro-batching a cada 5 min)
+    │
+    ▼
+[BRONZE] ──────── MinIO + Delta Lake (dados brutos, imutáveis, versionados, ACID)
+    │
+    ▼
+[SILVER] ──────── Apache Spark / PySpark + Great Expectations (limpeza, deduplicação, validação)
+    │
+    ▼
+[GOLD] ─────────── dbt (86 features: temporais cíclicas, lags, rolling windows, indicadores)
+    │
+    ▼
+[MODELO ML] ───── XGBoost + MLflow (Score MotoAR 0–100 + classe de risco)
+    │
+    ▼
+[ENTREGA] ──────── Flask API + App MotoAR + Metabase + Push Notifications
 ```
 
-| Camada | Responsabilidade | Tecnologia |
-|--------|-----------------|------------|
-| **Bronze** | Dado bruto, imutável, nunca deletado | Flink (streaming) / Airbyte (batch) |
-| **Silver** | Limpeza: tipagem, deduplicação, nulos | Apache Spark |
-| **Gold** | Modelos analíticos prontos p/ consumo | dbt (SQL versionado) |
+**Por que Medalhão e não Lambda/Kappa?**
+- **Lambda descartada:** implica duplicidade de código (batch + streaming) sem ganho de latência justificável
+- **Kappa descartada:** o projeto não tem requisitos de streaming real em milissegundos; micro-batching a cada 5 min é suficiente
+- **Data Mesh descartado:** excessivo para uma equipe de 3 pessoas
 
 ---
 
-## Fontes e Classificação dos Dados
+## Stack Tecnológico
 
-| Fonte | Tipo | Formato | Volume | Periodicidade | Latência |
-|-------|------|---------|--------|---------------|----------|
-| SDK mobile/web | **Streaming** | Avro (Schema Registry) | 50k ev/s · ~2 bi/dia | Contínuo (tempo real) | < 500 ms |
-| PostgreSQL (Usuários) | Operacional (CDC) | Registros relacionais | ~50 mi de perfis | CDC incremental diário | < 5 min |
-| MySQL (Catálogo) | Operacional (CDC) | Registros relacionais | ~80 mi de faixas | CDC incremental diário | < 5 min |
-| Stripe API (Financeiro) | Operacional (REST) | JSON | ~500k transações/mês | Pull incremental diário | < 30 min |
-| DistroKid / TuneCore | Operacional (REST) | JSON / CSV | Metadados de faixas | Batch diário (02h00) | < 1 hora |
-
-**Eventos de streaming capturados pelo SDK:**
-- `play_event` — faixa iniciada (user_id, track_id, timestamp, device_type, session_id)
-- `skip_event` — faixa pulada antes dos 30s (user_id, track_id, skip_at_second, timestamp)
-- `like_event` — curtida em faixa ou álbum (user_id, entity_id, entity_type, timestamp)
-- `search_event` — busca realizada (user_id, query_text, results_count, timestamp)
-- `session_start` / `session_end` — abertura e fechamento de sessão
+| Etapa | Tecnologia | Justificativa |
+|---|---|---|
+| Ingestão | Python Requests + Schedule | Simplicidade, controle sobre polling de APIs REST |
+| Armazenamento | MinIO + Delta Lake | S3-compatível local, ACID, time travel, zero vendor lock-in |
+| Processamento | Apache Spark (PySpark) | Escalável, suporte nativo ao Delta Lake, joins e rolling windows |
+| Transformação SQL | dbt | SQL versionado no Git, testes automáticos, lineage completo |
+| Qualidade de Dados | Great Expectations | Validação automática, bloqueia dados inválidos antes de cada etapa |
+| Orquestração | Apache Airflow | DAGs em Python, retry automático, maior ecossistema de operadores |
+| Modelo ML | XGBoost + MLflow | Robusto para dados tabulares temporais; MLflow para rastreamento |
+| Serviço | Flask API + Metabase | Endpoint REST /predict < 500ms; dashboards sem código |
+| Monitoramento | Grafana + Prometheus | Alertas em tempo real, integração nativa com Airflow e Spark |
 
 ---
 
-## Stack Tecnológica
+## Domínios de Negócio (DDD)
 
-### Ingestão
-
-| Ferramenta | Função | Por que escolhemos |
-|------------|--------|-------------------|
-| **Apache Kafka** | Fila de streaming | 50k ev/s, retenção para replay via offset, replicação fator 3, desacoplamento produtor/consumidor |
-| **Airbyte** | Extração batch | CDC incremental nativo para PG/MySQL/Stripe, conectores prontos, interface de monitoramento |
-
-### Armazenamento
-
-| Ferramenta | Função | Por que escolhemos |
-|------------|--------|-------------------|
-| **MinIO** | Object storage | 100% compatível com S3, roda local via Docker, zero vendor lock-in |
-| **Delta Lake** | Formato de tabela | ACID sobre Parquet, time travel (auditoria de royalties), MERGE/upsert, Bronze imutável |
-
-### Processamento
-
-| Ferramenta | Função | Por que escolhemos |
-|------------|--------|-------------------|
-| **Apache Flink** | Streaming engine | Exactly-once semantics, janelas de tempo complexas, watermarks para eventos fora de ordem |
-| **Apache Spark** | Motor batch | Escala para centenas de GB, integração nativa com Delta Lake, PySpark |
-| **dbt** | Transformação SQL | SQL versionado no Git, testes automáticos embutidos, lineage automático Silver → Gold |
-
-### Orquestração e Consumo
-
-| Ferramenta | Função | Por que escolhemos |
-|------------|--------|-------------------|
-| **Apache Airflow** | Orquestração batch | DAGs Python, retry automático, operadores nativos Spark/dbt/Airbyte |
-| **Metabase** | Dashboards | Open-source, SQL direto na camada Gold, sem conhecimento técnico avançado |
-| **MLflow** | Ciclo de vida ML | Feature Store + tracking de experimentos + registro de modelos, integração com Spark |
-
----
-
-## Segurança e Governança
-
-### Segurança em múltiplas camadas
-
-- **Autenticação:** JWT entre todos os serviços internos via `auth-service`
-- **Criptografia em repouso:** AES-256 SSE-S3 em todos os buckets MinIO
-- **Criptografia em trânsito:** TLS 1.2+ em toda comunicação
-- **Credenciais:** Fernet key no Airflow — nenhuma credencial hardcoded em DAGs
-- **Tokenização:** campos sensíveis (cartão, CPF) mascarados antes de entrar na Bronze
-
-### Controle de acesso por camada
-
-| Camada | Leitura | Escrita |
-|--------|---------|---------|
-| Bronze | Engenharia de dados | Flink e Airbyte (somente) — imutável, sem DELETE |
-| Silver | Engenharia de dados + Analytics | Spark (jobs orquestrados) |
-| Gold | Todos os times (produto, mkt, financeiro) | dbt |
-
-### Governança
-
-- **Schema Registry:** política `BACKWARD` — novos schemas não quebram consumidores existentes
-- **Great Expectations:** validações automáticas entre cada camada (not_null, unique, integridade referencial)
-- **dbt:** lineage automático de todas as tabelas Gold
-- **Pipeline como código:** DAGs, modelos dbt, schemas Avro e configs do Airbyte versionados no Git
-
-### Conformidade LGPD
-
-- Dados pessoais identificáveis armazenados **apenas** no PostgreSQL (domínio Usuários)
-- Pseudonimização: `user_id` (UUID) em todo o pipeline — sem PII no Lakehouse
-- Direito ao esquecimento (art. 18): exclusão propagada via evento Kafka → anonimização em Bronze, Silver e Gold
-
----
-
-## Trade-offs
-
-| Decisão | Vantagem | Custo / Risco |
-|---------|----------|---------------|
-| Bronze imutável | Reversibilidade total — reprocessamento desde o dado original | Custo de armazenamento permanentemente elevado |
-| Kafka desacoplado | SDK e Flink evoluem de forma independente | Schema Registry vira ponto de acoplamento; mudança mal gerenciada quebra todos os consumidores |
-| Padrão Lambda | Cada caminho otimizado para seu requisito (latência vs. precisão) | Dois ecossistemas para operar (Kafka+Flink vs. Spark+Airflow) |
-| Arquitetura Medalhão | Qualidade progressiva e rastreabilidade garantidas | Latência adicional — dado bruto só chega à Gold após Bronze e Silver |
-| MinIO local | Zero custo, zero vendor lock-in, migração trivial para S3 | Sem replicação geográfica no ambiente de desenvolvimento |
-| Flink exactly-once | Zero plays duplicados — contagem perfeita para royalties | Overhead de checkpointing de ~10-20% na latência |
-
-> **Conclusão arquitetural:** Toda complexidade introduzida nesta arquitetura foi forçada por um requisito inegociável de negócio — não por preferência tecnológica.
-
----
-
-## Estrutura do Repositório
+O projeto segue os princípios de **Domain-Driven Design**, dividido em 5 domínios com baixo acoplamento:
 
 ```
-soundflow-data/
-│
-├── docs/
-│   ├── SoundFlow_Diagramas_Justificativas_Roteiro.pdf   # Documento completo (Parte 1)
-│   ├── SoundFlow_Completo.docx                          # Versão editável do documento
-│   └── SoundFlow_Lakehouse_Architecture.pdf             # Slides da apresentação
-│
-├── diagrams/
-│   ├── dominios_servicos.md          # Diagrama de domínios (Mermaid)
-│   └── arquitetura_ponta_a_ponta.md  # Fluxo ponta a ponta (Mermaid)
-│
-├── parte2/                           # (Implementação — em andamento)
-│   ├── docker-compose.yml
-│   ├── kafka/
-│   ├── flink/
-│   ├── spark/
-│   ├── dbt/
-│   ├── airflow/dags/
-│   └── scripts/faker_events.py
-│
-└── README.md
+Ingestão → Processamento → Feature Engineering → Modelo ML → Entrega
 ```
+
+| Domínio | Responsabilidade |
+|---|---|
+| **Ingestão** | Coleta de dados das APIs (IQAir, INMET, Open-Meteo), validação de schema |
+| **Processamento** | Limpeza, deduplicação, outlier clipping, imputação de nulos |
+| **Feature Engineering** | Geração das 86 features (lags, rolling windows, temporais cíclicas, indicadores) |
+| **Modelo ML** | Treinamento XGBoost, geração do Score MotoAR 0–100, inferência via API |
+| **Entrega** | Recomendações de equipamento, alertas críticos, dashboards Metabase |
+
+**Serviços compartilhados:** Apache Airflow (orquestração) + Grafana/Prometheus (monitoramento)
 
 ---
 
-## Parte 2 — Implementação
+## Resultados da Análise Exploratória (EDA)
 
-A Parte 2 consistirá na implementação prática do pipeline via **Docker Compose**, com dados sintéticos gerados pelo **Faker**. O plano está organizado em 6 fases:
+Análise conduzida sobre **45.061 registros reais** (INMET 2025 + IQAir março 2026):
 
-- [x] **Fase 1 — Infraestrutura base:** Docker Compose com todos os serviços
-- [ ] **Fase 2 — Ingestão:** Airbyte + conectores + script Python/Faker publicando no Kafka
-- [ ] **Fase 3 — Processamento:** Job Flink (Kafka → Bronze) + Job Spark (Bronze → Silver) + Great Expectations
-- [ ] **Fase 4 — Transformação & Consumo:** Modelos dbt (Silver → Gold) + Metabase + MLflow
-- [ ] **Fase 5 — Qualidade & Governança:** Suite Great Expectations completa + Grafana
-- [ ] **Fase 6 — Orquestração:** DAGs Airflow cobrindo o pipeline batch completo
+### PM2.5 — Estação CRAS Fercal (INMET 2025)
 
-> ⚠️ **Escopo consciente:** sem Alta Disponibilidade real (Airflow, Airbyte e MinIO em instância única). Objetivo: validar o fluxo, não garantir SLA de produção.
+| Métrica | Valor |
+|---|---|
+| Média anual | 11,55 µg/m³ |
+| Desvio padrão | 11,91 µg/m³ (alta variabilidade) |
+| Pico máximo | **156,9 µg/m³** (outubro/2025 — queimadas) |
+| P95 | 35,66 µg/m³ (classificação: Ruim — OMS) |
+| P99 | 54,44 µg/m³ (classificação: Perigoso) |
+
+### Principais Padrões Identificados
+
+- **Sazonalidade:** PM2.5 na estação seca é **5,3× maior** do que na chuvosa (22,3 µg/m³ em setembro vs. 4,2 µg/m³ em maio)
+- **Duplo pico diário:** 7h–9h (tráfego matutino, ~13 µg/m³) e 19h–21h (inversão térmica noturna, ~18 µg/m³ na seca)
+- **Efeito da chuva:** dias com >5mm de precipitação têm PM2.5 **34% menor**
+- **Heterogeneidade espacial:** sensor UnB Gama (periferia) tem AQI **70% maior** que Finatec (área verde/lagos)
+
+---
+
+## Roadmap — Parte 2 (Implementação)
+
+| Semana | Entrega |
+|---|---|
+| Semana 1 | Infraestrutura Docker Compose (MinIO, Spark, PostgreSQL, Airflow, Grafana) |
+| Semana 2 | Clientes de API + ingestão na camada Bronze do Delta Lake |
+| Semana 2–3 | Spark jobs Bronze → Silver + validação Great Expectations |
+| Semana 3 | Modelos dbt Silver → Gold com testes e lineage |
+| Semana 4 | DAGs Airflow para pipeline batch diário + alertas Grafana |
+| Semana 4 | Metabase dashboards + Flask API com inferência XGBoost |
+
+### Critérios de Sucesso da Parte 2
+- Pipeline batch rodando diariamente sem erros
+- Dados Gold 100% testados e documentados (dbt)
+- 5+ dashboards no Metabase utilizáveis
+- Flask API retornando predições com **latência < 500ms**
+- Grafana detectando anomalias em tempo real
+
+---
+
+## Riscos e Limitações
+
+| Risco | Mitigação |
+|---|---|
+| Indisponibilidade das APIs externas | Cache da última leitura válida + retry automático no Airflow |
+| Hardware limitado (< 8GB RAM) | Fallback para pandas em volumes pequenos no modo local |
+| Cobertura geográfica parcial | Apenas 4 sensores IQAir; regiões satélite ainda sem cobertura adequada |
+| Desvio do modelo em eventos atípicos | Retreinamento contínuo com novos dados; MLflow para rollback de versões |
 
 ---
 
 ## Referências
 
-- KLEPPMANN, Martin. *Designing Data-Intensive Applications*. O'Reilly Media, 2017.
-- REIS, Joe; HOUSLEY, Matt. *Fundamentals of Data Engineering*. O'Reilly Media, 2022.
-- [Apache Kafka Documentation](https://kafka.apache.org/documentation/)
-- [Apache Flink Documentation](https://flink.apache.org/docs/)
-- [Apache Spark Documentation](https://spark.apache.org/docs/latest/)
-- [Delta Lake Documentation](https://docs.delta.io/)
-- [dbt Documentation](https://docs.getdbt.com/)
-- [Airbyte Documentation](https://docs.airbyte.com/)
-- [Apache Airflow Documentation](https://airflow.apache.org/docs/)
-- [MinIO Documentation](https://min.io/docs/minio/)
-- [Great Expectations](https://greatexpectations.io/)
-- [MLflow Documentation](https://mlflow.org/docs/latest/)
-- BRASIL. Lei n.º 13.709/2018 — Lei Geral de Proteção de Dados Pessoais (LGPD).
+- [Delta Lake Documentation](https://docs.delta.io)
+- [dbt Documentation](https://docs.getdbt.com)
+- [Apache Airflow Documentation](https://airflow.apache.org/docs)
+- [Apache Spark Documentation](https://spark.apache.org/docs/latest)
+- [MinIO Documentation](https://min.io/docs/minio/container)
+- [Great Expectations Documentation](https://docs.greatexpectations.io)
+- [INMET — Dados de Estações Automáticas](https://portal.inmet.gov.br)
+- [IQAir API Documentation](https://api-docs.iqair.com)
+- [Open-Meteo API Documentation](https://open-meteo.com/en/docs)
+- OMS. *WHO Global Air Quality Guidelines*. Genebra: WHO, 2021.
+- Chen, T.; Guestrin, C. *XGBoost: A Scalable Tree Boosting System*. ACM SIGKDD, 2016.
+- Kleppmann, M. *Designing Data-Intensive Applications*. O'Reilly, 2017.
+- Reis, J. et al. *Fundamentals of Data Engineering*. O'Reilly, 2022.
 
 ---
 
-<div align="center">
-  <sub>Centro Universitário de Brasília — CEUB · Engenharia de Dados · 2026</sub>
-</div>
+*Projeto desenvolvido para a disciplina de Engenharia de Dados — UniCEUB, Brasília, 2026.*
